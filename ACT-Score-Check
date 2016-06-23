@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+import requests
+import time
+import smtplib
+from getpass import getpass
+from bs4 import BeautifulSoup
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+if __name__ == "__main__":
+    s = requests.session()
+
+    # get user inputs for email, username, password, and interval between checks
+    email = input('What is your email?\n')
+    inputs = {'username': input('What is your username?\n'),
+              'password': getpass('What is your password?\n')}
+    interval = int(input('Wait how many seconds between checks?\n'))
+
+    # log in
+    s.post('http://services.actstudent.org/OA_HTML/actibeCAcpLogin.jsp', data=inputs)
+
+    # continually loop checks, making sure not to check for changes the first time
+    first = True
+    while(True):
+        # get text in the box which reports status ('registered' for unavailable scores)
+        page = BeautifulSoup(s.get('https://services.actstudent.org/OA_HTML/actibeCTtdTestDatesMain.jsp').text, 'lxml')
+        table = page.find("tr", {'class':'dates'})
+        box = table.findAll("td")[-1]
+        
+        # not on first iteration, email the new status using the PPE email if it's changed.
+        if not first and prev != box:
+            # instantiate smtp server using PPE email and port 587
+            server = smtplib.SMTP('smtp.gmail.com',587)
+            server.starttls()
+            server.login('phoenixpythonbot@gmail.com', 'pythonpass')
+            
+            # create message, send, and print
+            msg = MIMEMultipart()
+            msg['Subject'] = '*****CHANGE TO ACT PAGE*****'
+            msg['From'] = 'phoenixpythonbot@gmail.com'
+            msg['To'] = email
+            msg.attach(MIMEText("The ACT page has updated, and the box previously showing a varient of 'Registered' now shows the following:\n" + box.text, 'plain'))
+            
+            server.send_message(msg)
+            server.quit()
+
+            print("The following new status was emailed:\n" + box.text)
+        else:
+            print("The page was checked with no new changes.")
+
+        # set the value to be checked against, and bool for first iteration, then sleep
+        prev = box
+        first = False
+        
+        time.sleep(interval)
